@@ -103,6 +103,8 @@ body, html {
   z-index: 1000;
   transition: transform 0.3s ease, background-color 0.3s ease;
   overflow-y: auto;
+  scrollbar-width: none; /* Firefox - hide scrollbar */
+  -ms-overflow-style: none; /* IE and Edge - hide scrollbar */
 }
 
 .sidebar.hidden {
@@ -215,14 +217,14 @@ body, html {
   font-size: 18px;
   line-height: 1.6;
   background-color: transparent;
-  font-family: 'Lato-Regular', Arial, sans-serif;
+  font-family: 'Lato-Regular', Arial, Helvetica, sans-serif;
   color: var(--text-color);
   overflow-y: auto;
   caret-color: var(--text-color);
   max-width: 800px;
   margin: 0 auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-color) transparent;
+  scrollbar-width: none; /* Firefox - hide scrollbar */
+  -ms-overflow-style: none; /* IE and Edge - hide scrollbar */
   transition: color 0.3s ease;
 }
 
@@ -411,40 +413,18 @@ body.timer-complete .editor {
   color: rgba(0, 0, 0, 1);
 }
 
-/* Custom scrollbar styles */
+/* Custom scrollbar styles - hidden but scrollable */
 .editor::-webkit-scrollbar {
-  width: 6px;
+  display: none; /* Chrome, Safari, Opera - hide scrollbar */
+  width: 0;
+  height: 0;
 }
 
-.editor::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.editor::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-color);
-  border-radius: 4px;
-}
-
-.editor:hover::-webkit-scrollbar-thumb {
-  opacity: 1;
-  background-color: rgba(0, 0, 0, 0.2);
-}
-
+/* Sidebar scrollbar - hidden but scrollable */
 .sidebar::-webkit-scrollbar {
-  width: 4px;
-}
-
-.sidebar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.sidebar::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-color);
-  border-radius: 4px;
-}
-
-.sidebar:hover::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2);
+  display: none; /* Chrome, Safari, Opera - hide scrollbar */
+  width: 0;
+  height: 0;
 }
 
 /* Override timer styles for dark mode */

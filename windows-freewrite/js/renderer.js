@@ -67,16 +67,19 @@ Here's my journal entry:`;
 
 // Available fonts
 const fonts = {
-    lato: 'Lato-Regular',
+    lato: 'Lato-Regular, Arial, sans-serif',
     system: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-    serif: 'Times New Roman, serif',
+    serif: '"Times New Roman", Times, serif',
     random: [
-        'Noto Serif Kannada',
-        'Georgia',
-        'Palatino',
-        'Garamond', 
-        'Bookman',
-        'Courier New'
+        'Georgia, serif',
+        '"Palatino Linotype", "Book Antiqua", Palatino, serif',
+        'Garamond, "Hoefler Text", "Times New Roman", serif',
+        '"Courier New", Courier, monospace',
+        'Verdana, Geneva, sans-serif',
+        'Tahoma, Geneva, sans-serif',
+        '"Trebuchet MS", Helvetica, sans-serif',
+        'Impact, Charcoal, sans-serif',
+        '"Comic Sans MS", cursive, sans-serif'
     ]
 };
 
@@ -126,6 +129,17 @@ function initializeEventListeners() {
     editor.addEventListener('blur', () => {
         saveCurrentEntry(); // Save when editor loses focus
     });
+    
+    // Click handler for editor container to ensure focus
+    const editorContainer = document.querySelector('.editor-container');
+    if (editorContainer) {
+        editorContainer.addEventListener('click', (e) => {
+            // Only focus if clicking on the container itself, not on child elements
+            if (e.target === editorContainer) {
+                editor.focus();
+            }
+        });
+    }
     
     // Font size button
     fontSizeButton.addEventListener('click', (e) => {
@@ -192,6 +206,12 @@ function initializeEventListeners() {
             
             if (!sidebar.classList.contains('hidden')) {
                 sidebar.classList.add('hidden');
+                // Restore focus to editor
+                setTimeout(() => {
+                    editor.focus();
+                    const len = editor.value.length;
+                    editor.setSelectionRange(len, len);
+                }, 100);
                 return;
             }
             
@@ -247,7 +267,9 @@ function setFont(fontType) {
         const randomFont = fonts.random[Math.floor(Math.random() * fonts.random.length)];
         selectedFont = randomFont;
         randomFontButton.style.fontWeight = 'bold';
-        randomFontButton.textContent = `Random [${randomFont}]`;
+        // Extract the first font name for display (before comma)
+        const displayName = randomFont.split(',')[0].replace(/"/g, '');
+        randomFontButton.textContent = `Random [${displayName}]`;
     }
     
     editor.style.fontFamily = selectedFont;
@@ -321,26 +343,39 @@ function toggleFullscreen() {
 
 // Toggle sidebar
 function toggleSidebar() {
+    const wasHidden = sidebar.classList.contains('hidden');
     sidebar.classList.toggle('hidden');
+    
+    // If sidebar is being closed, restore focus to editor
+    if (!wasHidden) {
+        // Use setTimeout to ensure sidebar animation completes before focusing
+        setTimeout(() => {
+            editor.focus();
+            // Force cursor to end of text
+            const len = editor.value.length;
+            editor.setSelectionRange(len, len);
+        }, 100);
+    }
 }
 
 // Load entries from main process
 function loadEntries() {
     ipcRenderer.send('load-entries');
-    
-    ipcRenderer.on('entries-loaded', (event, data) => {
-        entries = data.entries || [];
-        renderEntries();
-        
-        // If there are entries, load the first one
-        if (entries.length > 0) {
-            loadEntry(entries[0]);
-        } else {
-            // Create a new entry if there are none
-            createNewEntry();
-        }
-    });
 }
+
+// Listen for entries loaded (register once at module level to avoid duplicates)
+ipcRenderer.on('entries-loaded', (event, data) => {
+    entries = data.entries || [];
+    renderEntries();
+    
+    // If there are entries, load the first one
+    if (entries.length > 0) {
+        loadEntry(entries[0]);
+    } else {
+        // Create a new entry if there are none
+        createNewEntry();
+    }
+});
 
 // Render entries in the sidebar
 function renderEntries() {
@@ -363,6 +398,13 @@ function renderEntries() {
             if (!e.target.classList.contains('entry-delete')) {
                 loadEntry(entry);
                 sidebar.classList.add('hidden');
+                // Restore focus to editor after loading entry
+                setTimeout(() => {
+                    editor.focus();
+                    // Force cursor to end of text
+                    const len = editor.value.length;
+                    editor.setSelectionRange(len, len);
+                }, 100);
             }
         });
         
@@ -372,17 +414,8 @@ function renderEntries() {
             e.stopPropagation();
             // Implement delete functionality
             if (confirm('Are you sure you want to delete this entry?')) {
-                // Delete entry logic
-                entries = entries.filter(e => e.id !== entry.id);
-                renderEntries();
-                
-                if (selectedEntry && selectedEntry.id === entry.id) {
-                    if (entries.length > 0) {
-                        loadEntry(entries[0]);
-                    } else {
-                        createNewEntry();
-                    }
-                }
+                // Delete entry from disk via IPC
+                ipcRenderer.send('delete-entry', { filename: entry.filename });
             }
         });
         
@@ -409,6 +442,9 @@ function loadEntry(entry) {
     // Update UI
     updatePlaceholderVisibility();
     renderEntries();
+    
+    // Ensure editor has focus
+    editor.focus();
 }
 
 // Receive loaded entry from main process
@@ -416,6 +452,30 @@ ipcRenderer.on('entry-loaded', (event, data) => {
     if (data.success) {
         editor.value = data.content;
         updatePlaceholderVisibility();
+    }
+});
+
+// Receive delete confirmation from main process
+ipcRenderer.on('entry-deleted', (event, data) => {
+    if (data.success) {
+        // Find and remove the entry from the entries array
+        const deletedEntry = entries.find(e => e.filename === data.filename);
+        if (deletedEntry) {
+            entries = entries.filter(e => e.id !== deletedEntry.id);
+            renderEntries();
+            
+            // If the deleted entry was selected, load another entry
+            if (selectedEntry && selectedEntry.id === deletedEntry.id) {
+                if (entries.length > 0) {
+                    loadEntry(entries[0]);
+                } else {
+                    createNewEntry();
+                }
+            }
+        }
+    } else {
+        // Show error if deletion failed
+        alert('Failed to delete entry: ' + (data.error || 'Unknown error'));
     }
 });
 
@@ -462,6 +522,9 @@ function createNewEntry() {
     
     updatePlaceholderVisibility();
     
+    // Save the new entry immediately so it persists across sessions
+    saveCurrentEntry();
+    
     // Set focus to editor
     editor.focus();
 }
@@ -481,8 +544,6 @@ ipcRenderer.on('welcome-message-loaded', (event, data) => {
 function saveCurrentEntry() {
     if (!selectedEntry) return;
     
-    console.log('Saving entry:', selectedEntry.filename); // Debug log
-    
     // Update preview text
     const content = editor.value;
     const preview = content.replace(/\n/g, ' ').trim();
@@ -491,7 +552,7 @@ function saveCurrentEntry() {
     selectedEntry.previewText = truncated;
     selectedEntry.content = content; // Cache the content
     
-    // Save to file
+    // Save to file (even if empty - empty entries should still be saved)
     ipcRenderer.send('save-entry', {
         content: content,
         filename: selectedEntry.filename
@@ -548,14 +609,10 @@ function showCustomAlert(message, callback) {
 
 // Toggle chat menu
 function toggleChatMenu() {
-    console.log('Chat menu toggled');
-    
     // Check if popup already exists and remove it if it does
     const existingPopup = document.querySelector('.chat-popup');
     if (existingPopup) {
-        console.log('Removing existing popup');
         document.body.removeChild(existingPopup);
-        console.log('Setting focus to editor after removing popup');
         editor.focus();
         return; // Exit function to toggle off
     }
@@ -566,7 +623,6 @@ function toggleChatMenu() {
     if (entryText.startsWith("Hi. My name is Farza.") || 
         entryText.startsWith("hi. my name is farza.")) {
         showCustomAlert("Sorry, you can't chat with the guide. Please write your own entry.", () => {
-            console.log('Setting focus after Farza alert');
             editor.focus();
             // Force cursor to end
             const len = editor.value.length;
@@ -577,7 +633,6 @@ function toggleChatMenu() {
     
     if (entryText.length < 350) {
         showCustomAlert("Please free write for at minimum 5 minutes first. Then click this. Trust.", () => {
-            console.log('Setting focus after length alert');
             editor.focus();
             // Force cursor to end
             const len = editor.value.length;
@@ -604,7 +659,6 @@ function toggleChatMenu() {
     
     // Add to DOM first so we can measure it
     document.body.appendChild(popup);
-    console.log('Popup added to DOM');
     
     // Always position popup above the button
     popup.style.top = `${rect.top - popup.offsetHeight - 10}px`;
@@ -612,7 +666,6 @@ function toggleChatMenu() {
     
     // Add event listeners
     document.getElementById('chatgpt-btn').addEventListener('click', (e) => {
-        console.log('ChatGPT button clicked');
         e.preventDefault();
         e.stopPropagation();
         document.body.removeChild(popup);
@@ -621,7 +674,6 @@ function toggleChatMenu() {
     });
     
     document.getElementById('claude-btn').addEventListener('click', (e) => {
-        console.log('Claude button clicked');
         e.preventDefault();
         e.stopPropagation();
         document.body.removeChild(popup);
@@ -632,14 +684,12 @@ function toggleChatMenu() {
     // Close when clicking outside
     const closePopup = (e) => {
         if (!popup.contains(e.target) && e.target !== chatButton) {
-            console.log('Closing popup from outside click');
             e.preventDefault();
             e.stopPropagation();
             document.body.removeChild(popup);
             document.removeEventListener('click', closePopup);
             
             requestAnimationFrame(() => {
-                console.log('Attempting to restore focus after popup close');
                 editor.focus();
                 // Force the cursor to the end
                 const len = editor.value.length;
@@ -654,7 +704,6 @@ function toggleChatMenu() {
     }, 100);
     
     // Ensure editor maintains focus
-    console.log('Setting initial focus to editor');
     editor.focus();
 }
 
@@ -699,13 +748,3 @@ function toggleTheme() {
 function updateThemeButton(theme) {
     themeButton.textContent = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
 }
-
-// Also add focus tracking to the editor globally
-editor.addEventListener('focus', () => {
-    console.log('Editor focused (global)');
-});
-
-editor.addEventListener('blur', () => {
-    console.log('Editor lost focus (global)');
-    console.log('Active element:', document.activeElement);
-}); 

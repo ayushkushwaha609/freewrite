@@ -24,7 +24,7 @@ function createWindow() {
     backgroundColor: '#FFFFFF',
     show: false,
     roundedCorners: false,
-    icon: path.join(__dirname, 'assets/icon.png')
+    icon: path.join(__dirname, 'assets/icon.ico')
   });
 
   // and load the index.html of the app.
@@ -98,9 +98,13 @@ ipcMain.on('save-entry', (event, data) => {
   
   const filePath = path.join(documentsPath, filename);
   
-  // Save the file
-  fs.writeFileSync(filePath, content, 'utf-8');
-  event.reply('save-complete', { success: true, path: filePath });
+  try {
+    // Save the file (even if empty - empty entries should still be saved)
+    fs.writeFileSync(filePath, content, 'utf-8');
+    event.reply('save-complete', { success: true, path: filePath });
+  } catch (err) {
+    event.reply('save-complete', { success: false, error: err.message });
+  }
 });
 
 // Listen for load entries event
@@ -210,6 +214,27 @@ ipcMain.on('handle-escape', (event) => {
       // If not in fullscreen, quit the app
       app.quit();
     }
+  }
+});
+
+// Listen for delete-entry event
+ipcMain.on('delete-entry', (event, data) => {
+  const { filename } = data;
+  const documentsPath = path.join(app.getPath('documents'), 'Freewrite');
+  const filePath = path.join(documentsPath, filename);
+  
+  // Check if file exists before attempting to delete
+  if (fs.existsSync(filePath)) {
+    fs.unlink(filePath, (err) => {
+      if (err) {
+        event.reply('entry-deleted', { success: false, error: err.message });
+        return;
+      }
+      event.reply('entry-deleted', { success: true, filename });
+    });
+  } else {
+    // File doesn't exist, but consider it a success (already deleted)
+    event.reply('entry-deleted', { success: true, filename });
   }
 });
 
